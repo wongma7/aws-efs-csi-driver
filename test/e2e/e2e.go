@@ -79,12 +79,17 @@ func (e *efsDriver) GetPersistentVolumeSource(readOnly bool, fsType string, volu
 
 // List of testSuites to be executed in below loop
 var csiTestSuites = []func() testsuites.TestSuite{
-	testsuites.InitVolumesTestSuite,
+	testsuites.InitEphemeralTestSuite,
+	testsuites.InitMultiVolumeTestSuite,
+	testsuites.InitProvisioningTestSuite,
+	testsuites.InitSnapshottableTestSuite,
+	testsuites.InitSubPathTestSuite,
 	testsuites.InitVolumeIOTestSuite,
 	testsuites.InitVolumeModeTestSuite,
-	testsuites.InitSubPathTestSuite,
-	testsuites.InitProvisioningTestSuite,
-	testsuites.InitMultiVolumeTestSuite,
+	testsuites.InitVolumesTestSuite,
+	testsuites.InitVolumeExpandTestSuite,
+	testsuites.InitDisruptiveTestSuite,
+	testsuites.InitVolumeLimitsTestSuite,
 }
 
 var _ = ginkgo.BeforeSuite(func() {
