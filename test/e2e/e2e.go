@@ -89,15 +89,14 @@ var csiTestSuites = []func() testsuites.TestSuite{
 	testsuites.InitMultiVolumeTestSuite,
 }
 
-var _ = ginkgo.AfterSuite(func() {
+var _ = ginkgo.SynchronizedAfterSuite(func() {
+	// allNodesBody: do nothing because only node 1 needs to delete the EFS
+}, func() {
 	// Delete the EFS filesystem *once* for all tests (It blocks)
 	// Do nothing if it was never created if none of these EFS tests were part of
 	// the test suite's focus
-	if fileSystemId == "" {
-		return
-	}
-	ginkgo.By(fmt.Sprintf("Deleting EFS filesystem %q", fileSystemId))
-	if len(fileSystemId) != 0 {
+	if fileSystemId != "" {
+		ginkgo.By(fmt.Sprintf("Deleting EFS filesystem %q", fileSystemId))
 		c := NewCloud(Region)
 		err := c.DeleteFileSystem(fileSystemId)
 		if err != nil {
@@ -112,49 +111,61 @@ var _ = ginkgo.AfterSuite(func() {
 })
 
 var _ = ginkgo.Describe("[efs-csi] EFS CSI", func() {
+	var efsWg sync.WaitGroup
+	efsWg.Add(1)
+	var efsOnce sync.Once
 	ginkgo.BeforeEach(func() {
 		// Create the EFS filesystem *once* for all tests (It blocks)
 		// The reason creation should be BeforeEach but deletion AfterSuite is
 		// because if creation were BeforeSuite it would be unnecessarily attempted
 		// even if none of these EFS tests were part of the test suite's focus
-		if fileSystemId != "" {
-			ginkgo.By(fmt.Sprintf("Using EFS filesystem %q in region %q for cluster %q", fileSystemId, Region, ClusterName))
-			return
+		efsOnce.Do(func() {
+			defer efsWg.Done()
+			ginkgo.By(fmt.Sprintf("Creating EFS filesystem in region %q for cluster %q", Region, ClusterName))
+			if Region == "" || ClusterName == "" {
+				ginkgo.Fail("failed to create EFS filesystem: both Region and ClusterName must be non-empty")
+			}
+			c := NewCloud(Region)
+			id, err := c.CreateFileSystem(ClusterName)
+			if err != nil {
+				ginkgo.Fail(fmt.Sprintf("failed to create EFS filesystem: %s", err))
+			}
+			fileSystemId = id
+			ginkgo.By(fmt.Sprintf("Created EFS filesystem %q in region %q for cluster %q", fileSystemId, Region, ClusterName))
+		})
+		efsWg.Wait()
+		if fileSystemId == "" {
+			ginkgo.Fail("EFS creation failed")
 		}
-
-		ginkgo.By(fmt.Sprintf("Creating EFS filesystem in region %q for cluster %q", Region, ClusterName))
-		if Region == "" || ClusterName == "" {
-			ginkgo.Fail("failed to create EFS filesystem: both Region and ClusterName must be non-empty")
-		}
-		c := NewCloud(Region)
-		id, err := c.CreateFileSystem(ClusterName)
-		if err != nil {
-			ginkgo.Fail(fmt.Sprintf("failed to create EFS filesystem: %s", err))
-		}
-		fileSystemId = id
-		ginkgo.By(fmt.Sprintf("Created EFS filesystem %q in region %q for cluster %q", fileSystemId, Region, ClusterName))
 	})
 
-	var once sync.Once
+	var driverWg sync.WaitGroup
+	driverWg.Add(1)
+	var driverOnce sync.Once
 	ginkgo.BeforeEach(func() {
 		// Deploy the EFS CSI driver *once* for all tests (It blocks)
 		// Alternatively, could deploy the driver for each test in PrepareTest
-		once.Do(func() {
+		driverOnce.Do(func() {
+			defer driverWg.Done()
 			cs, err := framework.LoadClientset()
 			framework.ExpectNoError(err, "loading kubernetes clientset")
 			_, err = cs.StorageV1beta1().CSIDrivers().Get("efs.csi.aws.com", metav1.GetOptions{})
 			if err == nil {
 				// CSIDriver exists, assume driver has already been deployed
 				ginkgo.By("Using already-deployed EFS CSI driver")
-				return
 			} else if err != nil && !apierrors.IsNotFound(err) {
 				// Non-NotFound errors are unexpected
 				framework.ExpectNoError(err, "getting csidriver efs.csi.aws.com")
+			} else {
+				ginkgo.By("Deploying EFS CSI driver")
+				framework.RunKubectlOrDie("apply", "-k", "github.com/kubernetes-sigs/aws-efs-csi-driver/deploy/kubernetes/overlays/stable/?ref=master")
 			}
-			ginkgo.By("Deploying EFS CSI driver")
-			framework.RunKubectlOrDie("apply", "-k", "github.com/kubernetes-sigs/aws-efs-csi-driver/deploy/kubernetes/overlays/stable/?ref=master")
 			deployed = true
 		})
+		driverWg.Wait()
+		if !deployed {
+			ginkgo.Fail("driver deployment failed")
+		}
 	})
 
 	driver := InitEFSCSIDriver()
