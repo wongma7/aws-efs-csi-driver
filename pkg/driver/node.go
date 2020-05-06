@@ -101,7 +101,8 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		mountOptions = append(mountOptions, "ro")
 	}
 
-	if m := volCap.GetMount(); m != nil {
+	m := volCap.GetMount()
+	if m != nil {
 		hasOption := func(options []string, opt string) bool {
 			for _, o := range options {
 				if o == opt {
@@ -115,6 +116,10 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 				mountOptions = append(mountOptions, f)
 			}
 		}
+	} else {
+		// Default to "tls" if no mount options have been specified, otherwise
+		// respect them so that "tls" may be omitted and opted-out of
+		mountOptions = append(mountOptions, "tls")
 	}
 	klog.V(5).Infof("NodePublishVolume: creating dir %s", target)
 	if err := d.mounter.MakeDir(target); err != nil {
