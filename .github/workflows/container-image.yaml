@@ -19,12 +19,15 @@ jobs:
         IMAGE=aws-efs-csi-driver
         if [ "$BRANCH" = "master" ]; then
           TAG=$SHORT_SHA
+          LATEST_TAG=latest
         else
           TAG=$BRANCH
         fi
         docker login docker.pkg.github.com -u $USER -p ${{ secrets.REGISTRY_TOKEN }}
         docker tag aws-efs-csi-driver docker.pkg.github.com/$GITHUB_REPOSITORY/$IMAGE:$TAG
+        docker tag aws-efs-csi-driver docker.pkg.github.com/$GITHUB_REPOSITORY/$IMAGE:$LATEST_TAG
         docker push docker.pkg.github.com/$GITHUB_REPOSITORY/$IMAGE:$TAG
+        docker push docker.pkg.github.com/$GITHUB_REPOSITORY/$IMAGE:$LATEST_TAG
     - name: Push to Dockerhub registry
       run: |
         BRANCH=$(echo $GITHUB_REF | cut -d'/' -f3)
@@ -32,9 +35,12 @@ jobs:
         REPO=amazon/aws-efs-csi-driver
         if [ "$BRANCH" = "master" ]; then
           TAG=$SHORT_SHA
+          LATEST_TAG=latest
         else
           TAG=$BRANCH
         fi
         docker login -u ${{ secrets.DOCKERHUB_USER }} -p ${{ secrets.DOCKERHUB_TOKEN }}
         docker tag aws-efs-csi-driver $REPO:$TAG
+        docker tag aws-efs-csi-driver $REPO:$LATEST_TAG
         docker push $REPO:$TAG
+        docker push $REPO:$LATEST_TAG
