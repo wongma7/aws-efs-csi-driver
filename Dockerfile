@@ -22,6 +22,8 @@ COPY go.sum .
 RUN go mod download
 
 ADD . .
+ARG EFS_CLIENT_SOURCE
+ENV EFS_CLIENT_SOURCE=$EFS_CLIENT_SOURCE
 RUN make aws-efs-csi-driver
 
 FROM amazonlinux:2.0.20200602.0
